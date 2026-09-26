@@ -35,7 +35,18 @@ SUPABASE_URL = _get_secret("SUPABASE_URL")
 SUPABASE_KEY = _get_secret("SUPABASE_KEY")
 
 _client = None
+import time as _time
 
+
+def _with_retry(func, *args, **kwargs):
+    """Retry a Supabase call once if a transient network error happens."""
+    try:
+        return func(*args, **kwargs)
+    except Exception as e:
+        if "RemoteProtocolError" in str(type(e)) or "Server disconnected" in str(e):
+            _time.sleep(1)
+            return func(*args, **kwargs)
+        raise
 
 def get_client() -> Client:
     """Return a shared Supabase client, creating it on first use."""
@@ -190,9 +201,8 @@ def count_products_missing_embedding():
 # ---------------------------------------------------------------------------
 
 def get_state(key, default=None):
-    res = get_client().table("import_state").select("value").eq("key", key).execute()
+    res = _with_retry(lambda: get_client().table("import_state").select("value").eq("key", key).execute())
     return res.data[0]["value"] if res.data else default
-
 
 def set_state(key, value):
     get_client().table("import_state").upsert({"key": key, "value": str(value)}).execute()
