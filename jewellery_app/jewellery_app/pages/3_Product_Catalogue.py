@@ -216,13 +216,25 @@ with tab_website:
                 # similarly-paced work.
                 already_skipped = 0
                 new_raw_products = []
-                with st.spinner("Checking which products are already in your catalogue..."):
-                    for raw_product in raw_products:
-                        info = wi.normalize_shopify_product(raw_product, store_url)
-                        if info["product_code"] and db.get_product_by_code(info["product_code"]):
-                            already_skipped += 1
-                        else:
-                            new_raw_products.append(raw_product)
+                filter_status = st.empty()
+                filter_progress = st.progress(0)
+                total_to_check = len(raw_products)
+                for idx, raw_product in enumerate(raw_products):
+                    info = wi.normalize_shopify_product(raw_product, store_url)
+                    if info["product_code"] and db.get_product_by_code(info["product_code"]):
+                        already_skipped += 1
+                    else:
+                        new_raw_products.append(raw_product)
+                    # Update the UI regularly so the connection stays active during
+                    # this pass and you can see it's actually working, not frozen.
+                    if (idx + 1) % 100 == 0 or (idx + 1) == total_to_check:
+                        filter_status.text(
+                            f"Checking for duplicates: {idx + 1}/{total_to_check} "
+                            f"({already_skipped} already in catalogue so far)"
+                        )
+                        filter_progress.progress((idx + 1) / total_to_check)
+                filter_status.empty()
+                filter_progress.empty()
 
                 if not new_raw_products:
                     st.success(
