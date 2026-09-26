@@ -178,25 +178,84 @@ with tab_website:
         help="The main address of your online store.",
     )
 
-    if st.button("Start Website Import", type="primary"):
-        progress_bar = st.progress(0)
+    WEBSITE_IMPORT_BATCH_SIZE = 150  # products processed per step, to stay light on memory
+
+    col_start, col_cancel = st.columns([1, 1])
+    with col_start:
+        start_clicked = st.button("Start Website Import", type="primary")
+    with col_cancel:
+        cancel_clicked = st.button("Cancel") if st.session_state.get("website_import_state") else False
+
+    if cancel_clicked:
+        st.session_state.website_import_state = None
+        st.info("Import cancelled. Anything already added is safely saved - you can resume later.")
+
+    if start_clicked:
+        with st.spinner("Connecting to your store..."):
+            try:
+                raw_products = wi.fetch_all_shopify_products(store_url)
+            except Exception as e:
+                raw_products = None
+                st.error(
+                    f"Could not reach the store's product feed ({e}). "
+                    "Double check the store URL, your internet connection, or try the CSV import instead."
+                )
+        if raw_products is not None:
+            if not raw_products:
+                st.error(
+                    "No products were found. The store's public product feed "
+                    "may be disabled, or the URL may be wrong."
+                )
+            else:
+                st.session_state.website_import_state = {
+                    "store_url": store_url,
+                    "raw_products": raw_products,
+                    "index": 0,
+                    "added": 0,
+                    "skipped": 0,
+                    "failed": 0,
+                    "log": [],
+                }
+
+    state = st.session_state.get("website_import_state")
+    if state:
+        total = len(state["raw_products"])
+        progress_bar = st.progress(state["index"] / total if total else 1.0)
         status_text = st.empty()
 
-        def update_progress(current, total, message):
-            progress_bar.progress(min(current / total, 1.0))
-            status_text.text(f"({current}/{total}) {message}")
+        if state["index"] < total:
+            def update_progress(current, tot, message):
+                status_text.text(f"({current}/{tot}) {message}")
 
-        with st.spinner("Connecting to your store..."):
-            result = wi.import_from_website(store_url, progress_callback=update_progress)
+            with st.spinner(
+                f"Importing products {state['index'] + 1}-{min(state['index'] + WEBSITE_IMPORT_BATCH_SIZE, total)} "
+                f"of {total} (processing in small batches to avoid overloading the app)..."
+            ):
+                result = wi.import_from_website_batch(
+                    state["store_url"], state["raw_products"], state["index"],
+                    WEBSITE_IMPORT_BATCH_SIZE, progress_callback=update_progress,
+                )
 
-        if not result["success"]:
-            st.error(result["error"])
+            state["added"] += result["added"]
+            state["skipped"] += result["skipped"]
+            state["failed"] += result["failed"]
+            state["log"].extend(result["log"])
+            state["index"] = result["next_index"]
+            progress_bar.progress(state["index"] / total)
+
+            if state["index"] < total:
+                st.rerun()  # automatically continue with the next batch
+            else:
+                st.success(
+                    f"Done! Added: {state['added']} | Skipped (already existed): {state['skipped']} "
+                    f"| Failed: {state['failed']} out of {total} products found on the site."
+                )
+                if state["log"]:
+                    with st.expander("Import details"):
+                        for line in state["log"]:
+                            st.text(line)
         else:
             st.success(
-                f"Done! Added: {result['added']} | Skipped (already existed): {result['skipped']} "
-                f"| Failed: {result['failed']} out of {result['total_rows']} products found on the site."
+                f"Done! Added: {state['added']} | Skipped (already existed): {state['skipped']} "
+                f"| Failed: {state['failed']} out of {total} products found on the site."
             )
-            if result["log"]:
-                with st.expander("Import details"):
-                    for line in result["log"]:
-                        st.text(line)
