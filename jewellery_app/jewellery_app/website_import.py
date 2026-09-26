@@ -23,6 +23,7 @@ NOTE: This needs to run somewhere with real internet access (your own
 computer), not inside this sandboxed workspace.
 """
 
+import gc
 import time
 import requests
 
@@ -100,6 +101,12 @@ def import_from_website(store_url, progress_callback=None):
     progress_callback(current_index, total, message) for a live progress bar.
 
     Returns a summary dictionary, same shape as csv_import.import_csv().
+
+    NOTE: For large catalogues (thousands of products), prefer
+    import_from_website_batch() below, called repeatedly in smaller
+    chunks - doing everything in one go like this function can use a
+    lot of memory and risks the app crashing partway through on
+    resource-limited hosting (like Streamlit Community Cloud's free tier).
     """
     try:
         raw_products = fetch_all_shopify_products(store_url)
@@ -122,11 +129,42 @@ def import_from_website(store_url, progress_callback=None):
             ),
         }
 
+    result = import_from_website_batch(
+        store_url, raw_products, 0, len(raw_products), progress_callback=progress_callback
+    )
+    return {
+        "success": True,
+        "total_rows": result["total"],
+        "added": result["added"],
+        "skipped": result["skipped"],
+        "failed": result["failed"],
+        "log": result["log"],
+    }
+
+
+def import_from_website_batch(store_url, raw_products, start_index, batch_size, progress_callback=None):
+    """
+    Process ONE bounded chunk of an already-fetched product list, instead of
+    the whole catalogue at once. This keeps each run's memory/CPU use small
+    and predictable, which matters a lot on resource-limited hosting.
+
+    'raw_products' - the full list returned by fetch_all_shopify_products()
+        (fetching it is cheap; it's the per-product image download + AI
+        fingerprinting that's expensive, so that's what we bound per call).
+    'start_index' - where in raw_products to start this batch.
+    'batch_size' - how many products to process in this call.
+
+    Returns a dict with this batch's counts plus 'next_index' (where the
+    next batch should start) and 'total' (the full catalogue size), so the
+    caller can keep calling this in a loop until next_index == total.
+    """
     total = len(raw_products)
+    end_index = min(start_index + batch_size, total)
     added, skipped, failed = 0, 0, 0
     log = []
 
-    for i, raw_product in enumerate(raw_products):
+    for i in range(start_index, end_index):
+        raw_product = raw_products[i]
         info = normalize_shopify_product(raw_product, store_url)
         code, name = info["product_code"], info["product_name"]
 
@@ -173,11 +211,19 @@ def import_from_website(store_url, progress_callback=None):
             failed += 1
             log.append(f"Item {i + 1}: {message}")
 
+        # Explicitly drop references and free memory every so often - cheap
+        # insurance against gradual memory build-up over a long run.
+        if (i + 1) % 50 == 0:
+            del local_image_path, embedding
+            gc.collect()
+
+    gc.collect()
+
     return {
-        "success": True,
-        "total_rows": total,
         "added": added,
         "skipped": skipped,
         "failed": failed,
         "log": log,
+        "next_index": end_index,
+        "total": total,
     }
