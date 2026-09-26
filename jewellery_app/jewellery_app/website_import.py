@@ -4,57 +4,59 @@ website_import.py
 Automatically imports products directly from your Shopify store
 (www.adorebypriyanka.com), instead of requiring a manual CSV.
 
-How this works (in simple terms):
-Shopify online stores publish a public data feed of their products at
-a web address like:
-    https://www.adorebypriyanka.com/products.json
+WHY THIS FILE IS SPLIT INTO TWO STAGES
+---------------------------------------
+The old, single-step version of this import fetched every page of the
+store's catalogue AND downloaded every photo AND computed every visual
+fingerprint, all inside one call. For a small shop that's fine - but for
+a catalogue of 4,000+ products, that one call can run for well over an
+hour, use too much memory, and crash the app. So the import is now two
+independent stages:
 
-This isn't a secret API - it's a standard, public feature of every
-Shopify store (used by apps, price-comparison tools, etc.) unless the
-store owner has specifically disabled it. It gives us clean, structured
-data for every product: name, price, category, images, and SKU/variant
-codes - much more reliable than reading text off the webpage.
+  STAGE 1 - fetch_and_save_metadata_page()
+      Pulls ONE page (up to 250 products) of names/prices/categories/SKUs
+      and the *URL* of each product's photo, and saves them to the
+      database immediately. No downloading, no fingerprinting - this is
+      fast. The Streamlit import page calls this once per page and
+      reruns itself until every page is done, so no single request ever
+      takes long or uses much memory.
 
-This file fetches that feed, page by page (Shopify limits each request
-to 250 products), and turns each product into a row in our database,
-downloading its main photo and generating its visual fingerprint.
+  STAGE 2 - generate_fingerprints_batch()
+      Separately, works through whatever products are missing a visual
+      fingerprint (found via their saved image_url), downloading the
+      photo, uploading it to permanent storage, and fingerprinting a
+      small batch at a time. This can be run any time, repeatedly, until
+      the queue is empty - and if it's interrupted, nothing is lost: it
+      just picks up the same leftover queue next time.
 
-NOTE: This needs to run somewhere with real internet access (your own
-computer), not inside this sandboxed workspace.
+Both stages record their progress in the database (see database.py's
+get_state/set_state), not just in Streamlit's session, so a page reload
+or an app reboot doesn't lose your place.
 """
 
-import gc
-import time
 import requests
 
 import database as db
 import image_matching as im
-from csv_import import _download_image  # reuse the same image-download logic
+from storage_utils import download_and_upload_image
+
+STATE_KEY_PAGE = "shopify_import_next_page"
+STATE_KEY_STORE_URL = "shopify_import_store_url"
+STATE_KEY_DONE = "shopify_import_done"
 
 
-def fetch_all_shopify_products(store_url, page_limit=250, max_pages=100, delay_seconds=0.5):
+def fetch_shopify_page(store_url, page, page_limit=250):
     """
-    Download every product from a Shopify store's public product feed.
-    'store_url' should be like 'https://www.adorebypriyanka.com'.
-    Returns a list of raw Shopify product dictionaries.
+    Fetch a single page of a Shopify store's public product feed.
+    Returns the list of raw Shopify product dictionaries for that page
+    (an empty list means there are no more pages).
     """
     store_url = store_url.rstrip("/")
-    all_products = []
-
-    for page in range(1, max_pages + 1):
-        url = f"{store_url}/products.json?limit={page_limit}&page={page}"
-        response = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
-        response.raise_for_status()
-        data = response.json()
-        products = data.get("products", [])
-
-        if not products:
-            break  # no more pages
-
-        all_products.extend(products)
-        time.sleep(delay_seconds)  # be polite to the server
-
-    return all_products
+    url = f"{store_url}/products.json?limit={page_limit}&page={page}"
+    response = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+    response.raise_for_status()
+    data = response.json()
+    return data.get("products", [])
 
 
 def normalize_shopify_product(raw_product, store_url):
@@ -68,8 +70,6 @@ def normalize_shopify_product(raw_product, store_url):
     handle = raw_product.get("handle", "").strip()
     product_type = (raw_product.get("product_type") or "").strip()
 
-    # Prefer a real SKU from the first variant that has one; otherwise
-    # fall back to the product's URL "handle" (always unique) as the code.
     sku = ""
     variants = raw_product.get("variants") or []
     for variant in variants:
@@ -92,138 +92,127 @@ def normalize_shopify_product(raw_product, store_url):
     }
 
 
-def import_from_website(store_url, progress_callback=None):
+# ---------------------------------------------------------------------------
+# STAGE 1 - fast metadata import, one page at a time
+# ---------------------------------------------------------------------------
+
+def start_new_import(store_url):
+    """Reset progress and begin a fresh Stage 1 import for this store URL."""
+    db.set_state(STATE_KEY_STORE_URL, store_url)
+    db.set_state(STATE_KEY_PAGE, 1)
+    db.set_state(STATE_KEY_DONE, "0")
+
+
+def get_import_progress():
+    """Read back where Stage 1 currently is, so the page can resume correctly."""
+    return {
+        "store_url": db.get_state(STATE_KEY_STORE_URL, ""),
+        "next_page": int(db.get_state(STATE_KEY_PAGE, 1)),
+        "done": db.get_state(STATE_KEY_DONE, "0") == "1",
+    }
+
+
+def fetch_and_save_metadata_page(store_url, page, page_limit=250):
     """
-    Full import: fetch every product from the store, then add each one
-    (with photo + fingerprint) to our local database.
-
-    'progress_callback', if given, is called as
-    progress_callback(current_index, total, message) for a live progress bar.
-
-    Returns a summary dictionary, same shape as csv_import.import_csv().
-
-    NOTE: For large catalogues (thousands of products), prefer
-    import_from_website_batch() below, called repeatedly in smaller
-    chunks - doing everything in one go like this function can use a
-    lot of memory and risks the app crashing partway through on
-    resource-limited hosting (like Streamlit Community Cloud's free tier).
+    Do ONE page's worth of Stage 1 work: fetch up to `page_limit` products
+    from Shopify, save each as a database row (metadata + image_url only,
+    no download/fingerprint), and record progress.
     """
     try:
-        raw_products = fetch_all_shopify_products(store_url)
+        raw_products = fetch_shopify_page(store_url, page, page_limit)
     except Exception as e:
         return {
             "success": False,
             "error": (
                 f"Could not reach the store's product feed ({e}). "
-                "Double check the store URL, your internet connection, "
-                "or try the CSV import instead."
+                "Double check the store URL and your internet connection."
             ),
         }
 
-    if not raw_products:
-        return {
-            "success": False,
-            "error": (
-                "No products were found. The store's public product feed "
-                "may be disabled, or the URL may be wrong."
-            ),
-        }
-
-    result = import_from_website_batch(
-        store_url, raw_products, 0, len(raw_products), progress_callback=progress_callback
-    )
-    return {
-        "success": True,
-        "total_rows": result["total"],
-        "added": result["added"],
-        "skipped": result["skipped"],
-        "failed": result["failed"],
-        "log": result["log"],
-    }
-
-
-def import_from_website_batch(store_url, raw_products, start_index, batch_size, progress_callback=None):
-    """
-    Process ONE bounded chunk of an already-fetched product list, instead of
-    the whole catalogue at once. This keeps each run's memory/CPU use small
-    and predictable, which matters a lot on resource-limited hosting.
-
-    'raw_products' - the full list returned by fetch_all_shopify_products()
-        (fetching it is cheap; it's the per-product image download + AI
-        fingerprinting that's expensive, so that's what we bound per call).
-    'start_index' - where in raw_products to start this batch.
-    'batch_size' - how many products to process in this call.
-
-    Returns a dict with this batch's counts plus 'next_index' (where the
-    next batch should start) and 'total' (the full catalogue size), so the
-    caller can keep calling this in a loop until next_index == total.
-    """
-    total = len(raw_products)
-    end_index = min(start_index + batch_size, total)
     added, skipped, failed = 0, 0, 0
     log = []
 
-    for i in range(start_index, end_index):
-        raw_product = raw_products[i]
+    for raw_product in raw_products:
         info = normalize_shopify_product(raw_product, store_url)
         code, name = info["product_code"], info["product_name"]
 
         if not code or not name:
             failed += 1
-            log.append(f"Item {i + 1}: missing name or code - skipped.")
-            if progress_callback:
-                progress_callback(i + 1, total, "Skipped (missing data)")
+            log.append("An item was missing a name or code - skipped.")
             continue
 
         if db.get_product_by_code(code):
             skipped += 1
-            log.append(f"Item {i + 1}: '{code}' already exists - skipped.")
-            if progress_callback:
-                progress_callback(i + 1, total, f"Skipped {code} (already exists)")
             continue
-
-        local_image_path = ""
-        embedding = None
-        if info["image_url"]:
-            local_image_path = _download_image(info["image_url"], code)
-            if local_image_path:
-                try:
-                    embedding = im.get_embedding(local_image_path)
-                except Exception as e:
-                    log.append(f"Item {i + 1} ({code}): image fingerprinting failed ({e}).")
-            else:
-                log.append(f"Item {i + 1} ({code}): could not download image.")
 
         ok, message = db.add_product(
             product_code=code,
             product_name=name,
             category=info["category"],
             website_url=info["website_url"],
-            image_path=local_image_path or "",
             status="Existing Product",
-            embedding=embedding,
+            image_url=info["image_url"],
         )
         if ok:
             added += 1
-            if progress_callback:
-                progress_callback(i + 1, total, f"Added {code} - {name}")
         else:
             failed += 1
-            log.append(f"Item {i + 1}: {message}")
+            log.append(message)
 
-        # Explicitly drop references and free memory every so often - cheap
-        # insurance against gradual memory build-up over a long run.
-        if (i + 1) % 50 == 0:
-            del local_image_path, embedding
-            gc.collect()
-
-    gc.collect()
+    has_more = len(raw_products) == page_limit
+    db.set_state(STATE_KEY_PAGE, page + 1)
+    db.set_state(STATE_KEY_DONE, "0" if has_more else "1")
 
     return {
+        "success": True,
+        "page": page,
+        "fetched": len(raw_products),
         "added": added,
         "skipped": skipped,
         "failed": failed,
+        "has_more": has_more,
         "log": log,
-        "next_index": end_index,
-        "total": total,
+    }
+
+
+# ---------------------------------------------------------------------------
+# STAGE 2 - background fingerprinting, a small batch at a time
+# ---------------------------------------------------------------------------
+
+def generate_fingerprints_batch(batch_size=25):
+    """
+    Process up to `batch_size` products that are missing a visual
+    fingerprint: download each one's photo, upload it to permanent
+    storage, and compute its embedding.
+    """
+    products = db.get_products_missing_embedding(limit=batch_size)
+
+    processed, failed = 0, 0
+    log = []
+
+    for product in products:
+        code = product["product_code"]
+        image_url = product["image_url"]
+
+        public_url, local_temp_path = download_and_upload_image(image_url, code)
+        if not public_url:
+            failed += 1
+            log.append(f"{code}: could not download/upload image.")
+            continue
+
+        try:
+            embedding = im.get_embedding(local_temp_path)
+        except Exception as e:
+            failed += 1
+            log.append(f"{code}: fingerprinting failed ({e}).")
+            continue
+
+        db.update_product(product["id"], image_path=public_url, embedding=embedding)
+        processed += 1
+
+    return {
+        "processed": processed,
+        "failed": failed,
+        "remaining": db.count_products_missing_embedding(),
+        "log": log,
     }
