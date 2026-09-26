@@ -200,3 +200,32 @@ def set_state(key, value):
 
 def clear_state(key):
     get_client().table("import_state").delete().eq("key", key).execute()
+def get_existing_product_codes(codes):
+    """Given a list of product codes, return the subset that already exist."""
+    if not codes:
+        return set()
+    res = get_client().table("products").select("product_code").in_("product_code", codes).execute()
+    return {row["product_code"] for row in (res.data or [])}
+
+
+def add_products_bulk(payloads):
+    """
+    Insert many products in one request instead of one at a time - much
+    faster and far less likely to trip a network error. Returns
+    (added, failed). Falls back to inserting one by one only if the whole
+    batch fails, so a single bad row doesn't sink the rest.
+    """
+    if not payloads:
+        return 0, 0
+    try:
+        get_client().table("products").insert(payloads).execute()
+        return len(payloads), 0
+    except Exception:
+        added, failed = 0, 0
+        for payload in payloads:
+            try:
+                get_client().table("products").insert(payload).execute()
+                added += 1
+            except Exception:
+                failed += 1
+        return added, failed
