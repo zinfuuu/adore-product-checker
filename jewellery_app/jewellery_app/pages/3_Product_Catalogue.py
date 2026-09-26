@@ -8,6 +8,7 @@ Three tabs:
 """
 
 import os
+import time
 import uuid
 import tempfile
 import streamlit as st
@@ -207,29 +208,55 @@ with tab_website:
                     "may be disabled, or the URL may be wrong."
                 )
             else:
-                st.session_state.website_import_state = {
-                    "store_url": store_url,
-                    "raw_products": raw_products,
-                    "index": 0,
-                    "added": 0,
-                    "skipped": 0,
-                    "failed": 0,
-                    "log": [],
-                }
+                # Filter out products already in the catalogue UP FRONT, in one pass.
+                # Without this, if most of the catalogue is already imported (e.g. from
+                # a previous partial run), each batch would be almost instant "already
+                # exists" skips, causing many auto-continues per second - which can
+                # overwhelm the connection. Pre-filtering keeps every batch doing real,
+                # similarly-paced work.
+                already_skipped = 0
+                new_raw_products = []
+                with st.spinner("Checking which products are already in your catalogue..."):
+                    for raw_product in raw_products:
+                        info = wi.normalize_shopify_product(raw_product, store_url)
+                        if info["product_code"] and db.get_product_by_code(info["product_code"]):
+                            already_skipped += 1
+                        else:
+                            new_raw_products.append(raw_product)
+
+                if not new_raw_products:
+                    st.success(
+                        f"All {len(raw_products)} products from the site are already in your catalogue. Nothing new to import."
+                    )
+                else:
+                    st.session_state.website_import_state = {
+                        "store_url": store_url,
+                        "raw_products": new_raw_products,
+                        # counts already skipped in the pre-filter pass so the final
+                        # summary still reflects everything found on the site
+                        "added": 0,
+                        "skipped": already_skipped,
+                        "failed": 0,
+                        "log": [f"{already_skipped} product(s) were already in the catalogue (skipped during pre-check)."]
+                        if already_skipped else [],
+                        "index": 0,
+                        "site_total": len(raw_products),
+                    }
 
     state = st.session_state.get("website_import_state")
     if state:
-        total = len(state["raw_products"])
-        progress_bar = st.progress(state["index"] / total if total else 1.0)
+        total_new = len(state["raw_products"])  # already-filtered, so every item here needs real work
+        site_total = state.get("site_total", total_new)
+        progress_bar = st.progress(state["index"] / total_new if total_new else 1.0)
         status_text = st.empty()
 
-        if state["index"] < total:
+        if state["index"] < total_new:
             def update_progress(current, tot, message):
                 status_text.text(f"({current}/{tot}) {message}")
 
             with st.spinner(
-                f"Importing products {state['index'] + 1}-{min(state['index'] + WEBSITE_IMPORT_BATCH_SIZE, total)} "
-                f"of {total} (processing in small batches to avoid overloading the app)..."
+                f"Importing new products {state['index'] + 1}-{min(state['index'] + WEBSITE_IMPORT_BATCH_SIZE, total_new)} "
+                f"of {total_new} (processing in small batches to avoid overloading the app)..."
             ):
                 result = wi.import_from_website_batch(
                     state["store_url"], state["raw_products"], state["index"],
@@ -241,14 +268,15 @@ with tab_website:
             state["failed"] += result["failed"]
             state["log"].extend(result["log"])
             state["index"] = result["next_index"]
-            progress_bar.progress(state["index"] / total)
+            progress_bar.progress(state["index"] / total_new)
 
-            if state["index"] < total:
+            if state["index"] < total_new:
+                time.sleep(0.3)  # small pause between batches, easy on the connection
                 st.rerun()  # automatically continue with the next batch
             else:
                 st.success(
                     f"Done! Added: {state['added']} | Skipped (already existed): {state['skipped']} "
-                    f"| Failed: {state['failed']} out of {total} products found on the site."
+                    f"| Failed: {state['failed']} out of {site_total} products found on the site."
                 )
                 if state["log"]:
                     with st.expander("Import details"):
@@ -257,5 +285,5 @@ with tab_website:
         else:
             st.success(
                 f"Done! Added: {state['added']} | Skipped (already existed): {state['skipped']} "
-                f"| Failed: {state['failed']} out of {total} products found on the site."
+                f"| Failed: {state['failed']} out of {site_total} products found on the site."
             )
