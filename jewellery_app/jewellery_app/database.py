@@ -2,77 +2,95 @@
 database.py
 ------------
 This file handles everything related to storing and retrieving product
-information. It uses SQLite, which is just a single file on disk
-(data/jewellery.db) - no separate database server needed.
+information.
 
-Think of this file as the "filing cabinet" for the app: every other
-part of the app asks this file to save, find, or update product records.
+IMPORTANT CHANGE: this used to use a local SQLite file (data/jewellery.db).
+That worked fine on your own computer, but on Streamlit Community Cloud,
+local files are wiped every time the app sleeps from inactivity, reboots,
+or gets redeployed - so the whole product catalogue could vanish without
+warning. This version stores everything in Supabase (a free hosted
+Postgres database) instead, so your data survives all of that.
+
+Think of this file as the "filing cabinet" for the app: every other part
+of the app asks this file to save, find, or update product records - the
+rest of the app doesn't need to know or care that the storage moved.
 """
 
-import sqlite3
-import json
 import os
-from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "data", "jewellery.db")
+import streamlit as st
+from supabase import create_client, Client
 
 
-def get_connection():
-    """Open a connection to the database file (creates it if it doesn't exist)."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # lets us access columns by name, e.g. row["product_name"]
-    return conn
+def _get_secret(name):
+    """Read a credential from Streamlit secrets (deployed app) or an
+    environment variable (useful for local testing outside Streamlit)."""
+    try:
+        return st.secrets[name]
+    except Exception:
+        return os.environ.get(name)
+
+
+SUPABASE_URL = _get_secret("SUPABASE_URL")
+SUPABASE_KEY = _get_secret("SUPABASE_KEY")
+
+_client = None
+
+
+def get_client() -> Client:
+    """Return a shared Supabase client, creating it on first use."""
+    global _client
+    if _client is None:
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            raise RuntimeError(
+                "Supabase credentials are missing. Add SUPABASE_URL and "
+                "SUPABASE_KEY in your Streamlit app's Settings > Secrets."
+            )
+        _client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return _client
 
 
 def init_db():
-    """Create the products table if it doesn't already exist. Safe to call every time the app starts."""
-    conn = get_connection()
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_code TEXT UNIQUE NOT NULL,
-            product_name TEXT NOT NULL,
-            category TEXT,
-            website_url TEXT,
-            image_path TEXT,
-            status TEXT DEFAULT 'Existing Product',
-            date_added TEXT,
-            notes TEXT,
-            embedding TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
+    """
+    Kept for compatibility with existing code (app.py calls db.init_db()
+    on startup). The actual tables are created once, manually, via the
+    Supabase SQL editor, so there's nothing to do here at runtime. This
+    just checks the connection works.
+    """
+    get_client()
 
 
 def add_product(product_code, product_name, category="", website_url="",
-                 image_path="", status="Existing Product", notes="", embedding=None):
+                 image_path="", status="Existing Product", notes="", embedding=None,
+                 image_url=""):
     """
     Add a new product to the database.
-    'embedding' is the image's visual fingerprint (a list of numbers) - it gets
-    stored as a JSON text string so it fits neatly into a normal database column.
+    'image_path' is where the photo actually lives (a Supabase Storage
+    public URL once uploaded).
+    'image_url' is the original source URL (e.g. from Shopify) - saved
+    even before the photo has been downloaded/fingerprinted, so a later
+    background step can come back and finish the job.
     Returns (success: bool, message: str).
     """
-    conn = get_connection()
+    client = get_client()
+    payload = {
+        "product_code": product_code.strip(),
+        "product_name": product_name.strip(),
+        "category": category.strip() if category else "",
+        "website_url": website_url.strip() if website_url else "",
+        "image_path": image_path or "",
+        "status": status,
+        "notes": notes or "",
+        "embedding": embedding,
+        "image_url": image_url.strip() if image_url else "",
+    }
     try:
-        embedding_json = json.dumps(embedding) if embedding is not None else None
-        conn.execute("""
-            INSERT INTO products
-                (product_code, product_name, category, website_url, image_path,
-                 status, date_added, notes, embedding)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            product_code.strip(), product_name.strip(), category.strip(),
-            website_url.strip(), image_path, status,
-            datetime.now().strftime("%Y-%m-%d %H:%M"), notes, embedding_json
-        ))
-        conn.commit()
+        client.table("products").insert(payload).execute()
         return True, "Product added successfully."
-    except sqlite3.IntegrityError:
-        return False, f"A product with code '{product_code}' already exists."
-    finally:
-        conn.close()
+    except Exception as e:
+        if "duplicate key" in str(e).lower() or "unique constraint" in str(e).lower():
+            return False, f"A product with code '{product_code}' already exists."
+        return False, f"Could not add product: {e}"
 
 
 def update_product(product_id, **fields):
@@ -82,68 +100,103 @@ def update_product(product_id, **fields):
     """
     if not fields:
         return False, "Nothing to update."
-    conn = get_connection()
+    client = get_client()
     try:
-        if "embedding" in fields and fields["embedding"] is not None:
-            fields["embedding"] = json.dumps(fields["embedding"])
-        columns = ", ".join(f"{key} = ?" for key in fields.keys())
-        values = list(fields.values()) + [product_id]
-        conn.execute(f"UPDATE products SET {columns} WHERE id = ?", values)
-        conn.commit()
+        client.table("products").update(fields).eq("id", product_id).execute()
         return True, "Product updated."
-    except sqlite3.IntegrityError:
-        return False, "Update failed - product code may already be in use."
-    finally:
-        conn.close()
+    except Exception as e:
+        return False, f"Update failed: {e}"
 
 
 def delete_product(product_id):
-    conn = get_connection()
-    conn.execute("DELETE FROM products WHERE id = ?", (product_id,))
-    conn.commit()
-    conn.close()
+    get_client().table("products").delete().eq("id", product_id).execute()
 
 
 def get_all_products(with_embedding_only=False):
     """Return every product as a list of dictionaries."""
-    conn = get_connection()
-    rows = conn.execute("SELECT * FROM products ORDER BY date_added DESC").fetchall()
-    conn.close()
-    products = [dict(row) for row in rows]
+    query = get_client().table("products").select("*").order("date_added", desc=True)
+    res = query.execute()
+    products = res.data or []
     if with_embedding_only:
         products = [p for p in products if p.get("embedding")]
     return products
 
 
 def get_product_by_id(product_id):
-    conn = get_connection()
-    row = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
+    res = get_client().table("products").select("*").eq("id", product_id).execute()
+    return res.data[0] if res.data else None
 
 
 def get_product_by_code(product_code):
-    conn = get_connection()
-    row = conn.execute("SELECT * FROM products WHERE product_code = ?", (product_code,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
+    res = get_client().table("products").select("*").eq("product_code", product_code).execute()
+    return res.data[0] if res.data else None
 
 
 def search_products(query):
     """Simple text search across product code, name, and category."""
-    conn = get_connection()
     like = f"%{query}%"
-    rows = conn.execute("""
-        SELECT * FROM products
-        WHERE product_code LIKE ? OR product_name LIKE ? OR category LIKE ?
-        ORDER BY date_added DESC
-    """, (like, like, like)).fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    res = (
+        get_client()
+        .table("products")
+        .select("*")
+        .or_(f"product_code.ilike.{like},product_name.ilike.{like},category.ilike.{like}")
+        .order("date_added", desc=True)
+        .execute()
+    )
+    return res.data or []
 
 
 def product_count():
-    conn = get_connection()
-    count = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
-    conn.close()
-    return count
+    res = get_client().table("products").select("id", count="exact").execute()
+    return res.count or 0
+
+
+def get_products_missing_embedding(limit=50):
+    """
+    Products that have a known source image_url but don't have a visual
+    fingerprint yet. This is the work queue for the background
+    fingerprinting step (see website_import.py).
+    """
+    res = (
+        get_client()
+        .table("products")
+        .select("*")
+        .is_("embedding", "null")
+        .not_.is_("image_url", "null")
+        .neq("image_url", "")
+        .order("id")
+        .limit(limit)
+        .execute()
+    )
+    return res.data or []
+
+
+def count_products_missing_embedding():
+    res = (
+        get_client()
+        .table("products")
+        .select("id", count="exact")
+        .is_("embedding", "null")
+        .not_.is_("image_url", "null")
+        .neq("image_url", "")
+        .execute()
+    )
+    return res.count or 0
+
+
+# ---------------------------------------------------------------------------
+# Simple durable key/value storage, used to remember import progress so it
+# survives page reloads, dropped connections, and app reboots.
+# ---------------------------------------------------------------------------
+
+def get_state(key, default=None):
+    res = get_client().table("import_state").select("value").eq("key", key).execute()
+    return res.data[0]["value"] if res.data else default
+
+
+def set_state(key, value):
+    get_client().table("import_state").upsert({"key": key, "value": str(value)}).execute()
+
+
+def clear_state(key):
+    get_client().table("import_state").delete().eq("key", key).execute()
