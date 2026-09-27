@@ -91,14 +91,15 @@ def find_matches(query_embedding, catalogue_products, top_n=5):
     similarity (best first).
 
     'catalogue_products' is a list of product dictionaries from the database,
-    each expected to have an 'embedding' field (a JSON string).
+    each expected to have an 'embedding' field (may be a JSON string or
+    already a parsed list, depending on the database backend).
     """
     import json
     results = []
     for product in catalogue_products:
         if not product.get("embedding"):
             continue
-         raw_embedding = product["embedding"]
+        raw_embedding = product["embedding"]
         product_embedding = json.loads(raw_embedding) if isinstance(raw_embedding, str) else raw_embedding
         score = cosine_similarity(query_embedding, product_embedding)
         percent = similarity_to_percent(score)
