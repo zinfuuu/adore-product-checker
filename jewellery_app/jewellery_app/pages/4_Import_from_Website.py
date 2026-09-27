@@ -3,13 +3,15 @@ pages/4_Import_From_Website.py
 -------------------------------
 Two-stage, resumable import from your Shopify store's public product feed.
 
-Stage 1 pulls product names/prices/categories/photo links, page by page.
-Stage 2 works through a background queue, downloading photos and
-generating fingerprints a small batch at a time.
+Stage 1 pulls product names/prices/categories/photo links - runs straight
+through to completion in one click (lightweight, metadata only).
 
-Both stages show live progress and can be safely stopped and resumed -
-closing this page, reloading it, or even rebooting the app won't lose
-your place, since progress and data are stored in Supabase, not locally.
+Stage 2 downloads photos and generates fingerprints - now auto-continues
+in small batches until done, or until the connection needs a manual
+nudge (just click Start/Continue again if it ever stops partway).
+
+Progress is stored in Supabase, not locally, so a page reload or app
+reboot never loses your place.
 """
 
 import time
@@ -26,7 +28,7 @@ st.title("🌐 Import From Website")
 st.caption("Pulls products directly from your store's public product feed - safe to stop and resume anytime.")
 
 # ---------------------------------------------------------------------------
-# STAGE 1 - fast metadata import
+# STAGE 1 - fast metadata import (runs straight through in one click)
 # ---------------------------------------------------------------------------
 st.subheader("Stage 1 - Import product list")
 
@@ -46,50 +48,47 @@ with col2:
         wi.start_new_import(store_url)
         st.rerun()
 
-if "stage1_running" not in st.session_state:
-    st.session_state.stage1_running = False
-
 button_label = "▶️ Start Import" if progress["next_page"] == 1 else "▶️ Continue Import"
-run_col, stop_col = st.columns(2)
-with run_col:
-    if st.button(button_label, disabled=progress["done"]):
-        if progress["next_page"] == 1:
-            wi.start_new_import(store_url)
-        st.session_state.stage1_running = True
-        st.rerun()
-with stop_col:
-    if st.button("⏹ Stop Import"):
-        st.session_state.stage1_running = False
 
-status_box = st.empty()
+if st.button(button_label, disabled=progress["done"]):
+    if progress["next_page"] == 1:
+        wi.start_new_import(store_url)
 
-if st.session_state.stage1_running:
-    progress = wi.get_import_progress()
-    if progress["done"]:
-        st.session_state.stage1_running = False
-        st.rerun()
-    else:
-        result = wi.fetch_and_save_metadata_page(progress["store_url"], progress["next_page"])
+    status_box = st.empty()
+    total_added, total_skipped, total_failed = 0, 0, 0
+
+    while True:
+        current = wi.get_import_progress()
+        if current["done"]:
+            break
+
+        result = wi.fetch_and_save_metadata_page(current["store_url"], current["next_page"])
         if not result["success"]:
-            st.session_state.stage1_running = False
             st.error(result["error"])
-        else:
-            status_box.info(
-                f"Page {result['page']}: fetched {result['fetched']}, "
-                f"added {result['added']}, skipped {result['skipped']} (already existed)."
-            )
-            if not result["has_more"]:
-                st.session_state.stage1_running = False
-                st.success("Done! Every page has been imported.")
-            else:
-                time.sleep(0.2)
-                st.rerun()
+            break
+
+        total_added += result["added"]
+        total_skipped += result["skipped"]
+        total_failed += result["failed"]
+        status_box.info(
+            f"Page {result['page']}: fetched {result['fetched']}, "
+            f"added {result['added']}, skipped {result['skipped']}. "
+            f"(Running total - added: {total_added}, skipped: {total_skipped})"
+        )
+
+        if not result["has_more"]:
+            st.success(f"Done! Added {total_added}, skipped {total_skipped} (already existed), failed {total_failed}.")
+            break
+
+        time.sleep(0.3)
+
+    st.rerun()
 
 st.write("")
 st.divider()
 
 # ---------------------------------------------------------------------------
-# STAGE 2 - background fingerprinting
+# STAGE 2 - background fingerprinting (auto-continues until done or interrupted)
 # ---------------------------------------------------------------------------
 st.subheader("Stage 2 - Generate photo fingerprints")
 
@@ -103,7 +102,7 @@ if "stage2_running" not in st.session_state:
 
 fp_run_col, fp_stop_col = st.columns(2)
 with fp_run_col:
-    if st.button("▶️ Start / Continue Fingerprinting", disabled=(remaining == 0)):
+    if st.button("▶️ Start / Continue Fingerprinting (auto-runs until done)", disabled=(remaining == 0)):
         st.session_state.stage2_running = True
         st.rerun()
 with fp_stop_col:
