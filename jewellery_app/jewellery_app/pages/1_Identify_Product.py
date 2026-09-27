@@ -19,6 +19,16 @@ st.caption("Upload a photo or screenshot to search our catalogue.")
 st.page_link("app.py", label="⬅ Back to Home")
 st.write("")
 
+# Optional category filter - narrowing the search pool to just one category
+# (e.g. "Bracelet") meaningfully improves accuracy, since the AI model only
+# has to tell apart items within that category instead of the whole store.
+categories = db.get_distinct_categories()
+category_choice = st.selectbox(
+    "Category (optional, but recommended if known)",
+    options=["All categories"] + categories,
+    help="Narrowing this down helps the search avoid confusing similar-looking items from different categories.",
+)
+
 source = st.radio("Image source", ["Upload a photo/screenshot", "Take a photo now"], horizontal=True)
 
 uploaded_image = None
@@ -37,10 +47,13 @@ if uploaded_image:
     if st.button("🔍 Search Catalogue", type="primary"):
         catalogue = db.get_all_products(with_embedding_only=True)
 
+        if category_choice != "All categories":
+            catalogue = [p for p in catalogue if p.get("category") == category_choice]
+
         if not catalogue:
             st.warning(
-                "The catalogue doesn't have any products with photos yet. "
-                "Add products first from the Product Catalogue page."
+                "No products with photos were found for this category. "
+                "Try 'All categories', or add products first from the Product Catalogue page."
             )
         else:
             with st.spinner("Analyzing image and comparing against catalogue..."):
@@ -60,6 +73,10 @@ if uploaded_image:
                     st.warning(f"⚠️ {best['confidence_label']} - {best['similarity_percent']}% similarity")
                 else:
                     st.error(f"❌ {best['confidence_label']} - {best['similarity_percent']}% similarity")
+                    st.caption(
+                        "No result was confident enough to trust automatically. "
+                        "Compare the photos below yourself - the right one may still be among them."
+                    )
 
                 bcol1, bcol2 = st.columns([1, 2])
                 with bcol1:
@@ -79,6 +96,7 @@ if uploaded_image:
                 if len(matches) > 1:
                     st.write("---")
                     st.subheader("Other similar products")
+                    st.caption("Always worth checking these too, especially if the best match wasn't confident.")
                     for m in matches[1:]:
                         c1, c2 = st.columns([1, 3])
                         with c1:
