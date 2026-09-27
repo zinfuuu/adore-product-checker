@@ -68,18 +68,26 @@ def similarity_to_percent(score):
     in the 0.75-1.0 range and rarely go much below 0.5, so we stretch that
     range out to make the percentage meaningful and readable for staff.
     """
-    # Clamp and rescale: 0.5 -> 0%, 1.0 -> 100% (roughly)
     stretched = (score - 0.5) / 0.5
     percent = max(0.0, min(1.0, stretched)) * 100
     return round(percent, 1)
 
 
 def confidence_label(percent):
-    """Map a percentage to a human-readable confidence label."""
-    if percent >= 90:
+    """
+    Map a percentage to a human-readable confidence label.
+
+    NOTE: CLIP is a general-purpose visual model, not trained specifically
+    on jewellery - visually similar but different pieces (same metal tone,
+    similar layout) can still score deceptively high. These thresholds are
+    intentionally strict so the app doesn't present a shaky guess as if it
+    were certain. Staff should always glance at the photo, not just trust
+    the percentage.
+    """
+    if percent >= 93:
         return "Very likely match", "success"
-    elif percent >= 75:
-        return "Possible match", "warning"
+    elif percent >= 82:
+        return "Possible match - please confirm visually", "warning"
     else:
         return "No reliable match", "error"
 
