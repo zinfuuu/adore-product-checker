@@ -239,3 +239,8 @@ def add_products_bulk(payloads):
             except Exception:
                 failed += 1
         return added, failed
+def get_distinct_categories():
+    """Return a sorted list of unique, non-empty categories currently in the catalogue."""
+    res = get_client().table("products").select("category").execute()
+    categories = {row["category"] for row in (res.data or []) if row.get("category")}
+    return sorted(categories)
