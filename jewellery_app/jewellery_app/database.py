@@ -112,4 +112,166 @@ def add_product(product_code, product_name, category="", website_url="",
         return True, "Product added successfully."
     except Exception as e:
         if "duplicate key" in str(e).lower() or "unique constraint" in str(e).lower():
-            return False, f"A product
+            return False, f"A product with code '{product_code}' already exists."
+        return False, f"Could not add product: {e}"
+
+
+def update_product(product_id, **fields):
+    """
+    Update one or more fields of an existing product.
+    Usage: update_product(5, product_name="New Name", category="Rings")
+    """
+    if not fields:
+        return False, "Nothing to update."
+    client = get_client()
+    try:
+        client.table("products").update(fields).eq("id", product_id).execute()
+        return True, "Product updated."
+    except Exception as e:
+        return False, f"Update failed: {e}"
+
+
+def delete_product(product_id):
+    get_client().table("products").delete().eq("id", product_id).execute()
+
+
+def get_all_products(with_embedding_only=False):
+    """
+    Return EVERY product as a list of dictionaries (read in pages of 1000,
+    so catalogues bigger than 1000 products are fully loaded).
+    """
+    client = get_client()
+
+    def build_query():
+        query = client.table("products").select("*").order("id", desc=True)
+        if with_embedding_only:
+            query = query.not_.is_("embedding", "null")
+        return query
+
+    products = _fetch_all_rows(build_query)
+    if with_embedding_only:
+        products = [p for p in products if p.get("embedding")]
+    return products
+
+
+def get_product_by_id(product_id):
+    res = get_client().table("products").select("*").eq("id", product_id).execute()
+    return res.data[0] if res.data else None
+
+
+def get_product_by_code(product_code):
+    res = get_client().table("products").select("*").eq("product_code", product_code).execute()
+    return res.data[0] if res.data else None
+
+
+def search_products(query):
+    """Text search across product code, name, and category (all matches)."""
+    like = f"%{query}%"
+    client = get_client()
+    return _fetch_all_rows(
+        lambda: client.table("products")
+        .select("*")
+        .or_(f"product_code.ilike.{like},product_name.ilike.{like},category.ilike.{like}")
+        .order("id", desc=True)
+    )
+
+
+def product_count():
+    res = get_client().table("products").select("id", count="exact").execute()
+    return res.count or 0
+
+
+def get_products_missing_embedding(limit=50):
+    """
+    Products that have a known source image_url but no visual fingerprint
+    yet. This is the work queue for the fingerprinting step.
+    """
+    res = (
+        get_client()
+        .table("products")
+        .select("*")
+        .is_("embedding", "null")
+        .not_.is_("image_url", "null")
+        .neq("image_url", "")
+        .order("id")
+        .limit(limit)
+        .execute()
+    )
+    return res.data or []
+
+
+def count_products_missing_embedding():
+    res = (
+        get_client()
+        .table("products")
+        .select("id", count="exact")
+        .is_("embedding", "null")
+        .not_.is_("image_url", "null")
+        .neq("image_url", "")
+        .execute()
+    )
+    return res.count or 0
+
+
+# ---------------------------------------------------------------------------
+# Simple durable key/value storage, used to remember import progress so it
+# survives page reloads, dropped connections, and app reboots.
+# ---------------------------------------------------------------------------
+
+def get_state(key, default=None):
+    res = _with_retry(
+        lambda: get_client().table("import_state").select("value").eq("key", key).execute()
+    )
+    return res.data[0]["value"] if res.data else default
+
+
+def set_state(key, value):
+    get_client().table("import_state").upsert({"key": key, "value": str(value)}).execute()
+
+
+def clear_state(key):
+    get_client().table("import_state").delete().eq("key", key).execute()
+
+
+# ---------------------------------------------------------------------------
+# Bulk helpers used by the website import
+# ---------------------------------------------------------------------------
+
+def get_existing_product_codes(codes):
+    """Given a list of product codes, return the subset that already exist."""
+    if not codes:
+        return set()
+    res = get_client().table("products").select("product_code").in_("product_code", codes).execute()
+    return {row["product_code"] for row in (res.data or [])}
+
+
+def add_products_bulk(payloads):
+    """
+    Insert many products in one request instead of one at a time. Returns
+    (added, failed). Falls back to inserting one by one only if the whole
+    batch fails, so a single bad row doesn't sink the rest.
+    """
+    if not payloads:
+        return 0, 0
+    try:
+        get_client().table("products").insert(payloads).execute()
+        return len(payloads), 0
+    except Exception:
+        added, failed = 0, 0
+        for payload in payloads:
+            try:
+                get_client().table("products").insert(payload).execute()
+                added += 1
+            except Exception:
+                failed += 1
+        return added, failed
+
+
+def get_distinct_categories():
+    """Return a sorted list of unique, non-empty categories in the catalogue."""
+    client = get_client()
+    rows = _fetch_all_rows(
+        lambda: client.table("products").select("id, category").order("id")
+    )
+    categories = {row["category"] for row in rows if row.get("category")}
+    return sorted(categories)
