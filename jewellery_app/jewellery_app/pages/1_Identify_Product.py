@@ -58,7 +58,7 @@ if uploaded_image:
         else:
             with st.spinner("Analyzing image and comparing against catalogue..."):
                 query_embedding = im.get_embedding(uploaded_image)
-                matches = im.find_matches(query_embedding, catalogue, top_n=5)
+                matches = im.find_matches(query_embedding, catalogue, top_n=20)
 
             if not matches:
                 st.error("No matches could be calculated.")
