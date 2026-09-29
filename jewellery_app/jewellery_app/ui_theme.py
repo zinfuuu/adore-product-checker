@@ -16,9 +16,9 @@ import streamlit as st
 _CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap');
-.stApp {
-  background-color: #DCD8D2 !important
-  }
+html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+  background-color: #DCD8D2 !important;
+}
 .stApp h1, .stApp h2, .stApp h3, .stApp h4,
 .stApp p, .stApp label, .stApp li, .stApp button,
 .stApp a, .stApp input, .stApp textarea {
@@ -105,7 +105,7 @@ _HERO_BG = f"""
   position: fixed;
   inset: 0;
   z-index: 0;
-  opacity: 0.09;
+  opacity: 0.19;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(6, 1fr);
