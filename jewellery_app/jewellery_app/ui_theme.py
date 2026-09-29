@@ -2,7 +2,9 @@
 ui_theme.py
 -----------
 Shared look-and-feel for every page: warm grey paper, near-black ink,
-thin wide-tracked type, black pill buttons.
+thin wide-tracked type, black pill buttons - plus the same rounded
+pill/square/dot hero pattern used on the home page, faded and placed
+behind the page content so every screen shares one consistent look.
 
 Usage at the top of any page (right after st.set_page_config):
     import ui_theme
@@ -15,12 +17,6 @@ _CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap');
 
-.stApp {
-  background-image:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='120'><g fill='%231C1B1A' fill-opacity='0.035'><rect x='10' y='10' width='100' height='40' rx='20'/><rect x='130' y='10' width='40' height='40' rx='10'/><circle cx='205' cy='30' r='15'/></g></svg>");
-  background-repeat: repeat;
-  background-size: 240px 120px;
-}
 .stApp h1, .stApp h2, .stApp h3, .stApp h4,
 .stApp p, .stApp label, .stApp li, .stApp button,
 .stApp a, .stApp input, .stApp textarea {
@@ -31,7 +27,7 @@ _CSS = """
   letter-spacing: 0.04em;
 }
 
-.block-container { padding-top: 2.2rem; max-width: 820px; }
+.block-container { padding-top: 2.2rem; max-width: 820px; position: relative; z-index: 1; }
 
 .stButton > button,
 .stDownloadButton > button,
@@ -61,6 +57,7 @@ a[data-testid="stPageLink-NavLink"] p {
 div[data-testid="stVerticalBlockBorderWrapper"] {
   border-color: #1C1B1A;
   border-radius: 26px;
+  background: rgba(255, 255, 255, 0.55);
 }
 div[data-baseweb="select"] > div,
 .stTextInput input,
@@ -72,6 +69,56 @@ div[data-baseweb="select"] > div,
 </style>
 """
 
+# Same 19 blocks, same layout, as the home page hero - just rendered fixed
+# in the background of every page instead of as page content.
+_HERO_BLOCKS = [
+    ("1 / 1 / 3 / 3", "sq"),
+    ("1 / 3 / 4 / 4", "pill"),
+    ("1 / 4 / 2 / 6", "pill"),
+    ("1 / 6 / 3 / 7", "pill"),
+    ("1 / 7 / 3 / 9", "sq"),
+    ("2 / 4 / 4 / 5", "pill"),
+    ("2 / 5 / 3 / 6", "dot"),
+    ("3 / 1 / 6 / 2", "pill"),
+    ("3 / 2 / 4 / 3", "dot"),
+    ("3 / 5 / 4 / 7", "pill"),
+    ("3 / 7 / 5 / 9", "sq"),
+    ("4 / 2 / 6 / 4", "sq"),
+    ("4 / 4 / 5 / 7", "pill"),
+    ("5 / 4 / 7 / 5", "pill"),
+    ("5 / 5 / 7 / 7", "sq"),
+    ("5 / 7 / 6 / 8", "dot"),
+    ("5 / 8 / 7 / 9", "pill"),
+    ("6 / 1 / 7 / 4", "pill"),
+    ("6 / 7 / 7 / 8", "dot"),
+]
+
+_hero_blocks_html = "".join(
+    f'<div class="{shape}" style="grid-area:{area}"></div>' for area, shape in _HERO_BLOCKS
+)
+
+_HERO_BG = f"""
+<style>
+.bg-hero-wrap {{
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.05;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(6, 1fr);
+  gap: 10px;
+  padding: 30px;
+  pointer-events: none;
+}}
+.bg-hero-wrap > div {{ background: #1C1B1A; }}
+.bg-hero-wrap .sq {{ border-radius: 24%; }}
+.bg-hero-wrap .pill {{ border-radius: 999px; }}
+.bg-hero-wrap .dot {{ border-radius: 50%; }}
+</style>
+<div class="bg-hero-wrap">{_hero_blocks_html}</div>
+"""
+
 
 def apply_theme():
-    st.markdown(_CSS, unsafe_allow_html=True)
+    st.markdown(_CSS + _HERO_BG, unsafe_allow_html=True)
