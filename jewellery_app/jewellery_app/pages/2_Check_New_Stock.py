@@ -13,8 +13,9 @@ from PIL import Image
 
 import database as db
 import image_matching as im
-
+import ui_theme
 st.set_page_config(page_title="Check New Stock", page_icon="📥", layout="centered")
+ui_theme.apply_theme()
 st.title("📥 Check New Stock")
 st.caption("Photograph a new item to check if it already exists in our catalogue.")
 
