@@ -149,7 +149,7 @@ _HERO_BG = f"""
   position: fixed;
   inset: 0;
   z-index: 0;
-  opacity: 0.19;
+  opacity: 0.29;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(6, 1fr);
