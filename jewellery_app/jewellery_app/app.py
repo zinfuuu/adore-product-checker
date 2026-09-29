@@ -106,7 +106,7 @@ except Exception:
 
 st.markdown(
     '<div class="eyebrow">Adore by Priyanka</div>'
-    '<h1 class="hero-title">Product Finder</h1>'
+    '<h1 class="hero-title">Adore Scout</h1>'
     '<div class="hero-caption">Find out if a piece is already in our catalogue</div>',
     unsafe_allow_html=True,
 )
