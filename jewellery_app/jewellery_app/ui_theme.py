@@ -17,7 +17,7 @@ _CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap');
 html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
-  background-color: #DCD8D2 !important;
+  background-color: #6B1425 !important;
 }
 .stApp h1, .stApp h2, .stApp h3, .stApp h4,
 .stApp p, .stApp label, .stApp li, .stApp button,
