@@ -11,7 +11,7 @@ import streamlit as st
 import database as db
 import ui_theme
 
-st.set_page_config(page_title="Adore Scout", page_icon="💎", layout="centered")
+st.set_page_config(page_title="Adore Product Finder", page_icon="💎", layout="centered")
 ui_theme.apply_theme()
 db.init_db()  # make sure the database connection works before anything else runs
 
@@ -41,6 +41,8 @@ _BLOCKS = [
 st.markdown(
     """
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap');
+
 .hero-grid {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
@@ -55,8 +57,10 @@ st.markdown(
 .hero-grid .dot { border-radius: 50%; }
 
 .eyebrow {
-  text-align: center; letter-spacing: 0.42em; font-size: 0.66rem;
+  font-family: 'Poppins', sans-serif;
+  text-align: center; letter-spacing: 0.2em; font-size: 1.4rem;
   font-weight: 600; text-transform: uppercase; color: #1C1B1A;
+  margin-bottom: 0.4rem;
 }
 .hero-title {
   text-align: center; font-weight: 200 !important; letter-spacing: 0.22em;
