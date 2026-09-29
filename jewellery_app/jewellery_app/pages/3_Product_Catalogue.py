@@ -15,10 +15,13 @@ import streamlit as st
 
 import database as db
 import image_matching as im
+
+import ui_theme
 import csv_import as ci
 import website_import as wi
 
 st.set_page_config(page_title="Product Catalogue", page_icon="📖", layout="centered")
+ui_theme.apply_theme()
 st.title("📖 Product Catalogue")
 
 st.page_link("app.py", label="⬅ Back to Home")
