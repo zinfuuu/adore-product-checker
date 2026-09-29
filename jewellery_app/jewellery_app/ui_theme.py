@@ -63,7 +63,51 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
 }
 div[data-baseweb="select"] > div,
 .stTextInput input,
-.stTextArea textarea { border-radius: 14px; }
+.stTextArea textarea {
+  border-radius: 14px;
+  background-color: #F4EDE3 !important;
+  color: #1C1B1A !important;
+  border-color: #E6D5B8 !important;
+}
+
+[data-testid="stFileUploader"] {
+  max-width: 480px;
+  margin: 0 auto;
+}
+[data-testid="stFileUploader"] section {
+  background-color: #F4EDE3 !important;
+  border-radius: 22px;
+  border: 1.5px dashed #B08A3E !important;
+  padding: 2rem 1.5rem !important;
+}
+[data-testid="stFileUploaderDropzone"] {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  text-align: center !important;
+  gap: 0.5rem;
+}
+[data-testid="stFileUploader"] section span,
+[data-testid="stFileUploader"] section small {
+  color: #4A4642 !important;
+}
+[data-testid="stFileUploaderDropzone"] svg {
+  width: 34px;
+  height: 34px;
+}
+[data-testid="stFileUploaderDropzone"] button {
+  background-color: #1C1B1A !important;
+  color: #F4EDE3 !important;
+  border-radius: 999px !important;
+  margin-top: 0.4rem;
+}
+
+.stRadio label p { color: #FBF6EE !important; }
+
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stCaptionContainer"] {
+  color: #FBF6EE;
+}
 [data-testid="stExpander"] details {
   border-radius: 20px;
   border-color: #1C1B1A;
