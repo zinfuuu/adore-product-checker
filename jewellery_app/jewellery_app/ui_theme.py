@@ -17,10 +17,9 @@ _CSS = """
 
 .stApp {
   background-image:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'><g fill='%231C1B1A' fill-opacity='0.05'><rect x='10' y='10' width='60' height='60' rx='18'/><rect x='90' y='0' width='30' height='90' rx='15'/><circle cx='180' cy='40' r='22'/><rect x='150' y='90' width='90' height='30' rx='15'/><rect x='20' y='120' width='30' height='90' rx='15'/><rect x='80' y='150' width='60' height='60' rx='18'/><circle cx='200' cy='190' r='18'/></g></svg>"),
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.07 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-  background-repeat: repeat, repeat;
-  background-size: 260px 260px, 180px 180px;
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='120'><g fill='%231C1B1A' fill-opacity='0.035'><rect x='10' y='10' width='100' height='40' rx='20'/><rect x='130' y='10' width='40' height='40' rx='10'/><circle cx='205' cy='30' r='15'/></g></svg>");
+  background-repeat: repeat;
+  background-size: 240px 120px;
 }
 .stApp h1, .stApp h2, .stApp h3, .stApp h4,
 .stApp p, .stApp label, .stApp li, .stApp button,
