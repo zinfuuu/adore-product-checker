@@ -1,11 +1,9 @@
-```python
 """
 ui_theme.py
 -----------
-Shared look-and-feel for every page: warm grey paper, near-black ink,
-thin wide-tracked type, black pill buttons - plus the same rounded
-pill/square/dot hero pattern used on the home page, faded and placed
-behind the page content so every screen shares one consistent look.
+Shared look-and-feel for every page: burgundy background, cream cards,
+black pill buttons, plus the pill/square/dot pattern behind the content,
+and smooth mouse-wheel scrolling.
 
 Usage at the top of any page (right after st.set_page_config):
     import ui_theme
@@ -13,6 +11,7 @@ Usage at the top of any page (right after st.set_page_config):
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 _CSS = """
@@ -21,9 +20,7 @@ _CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap');
 
 
-/* =========================================================
-   MAIN PAGE BACKGROUND
-   ========================================================= */
+/* MAIN PAGE BACKGROUND */
 
 html, body, .stApp,
 [data-testid="stAppViewContainer"],
@@ -32,9 +29,7 @@ html, body, .stApp,
 }
 
 
-/* =========================================================
-   GLOBAL FONT
-   ========================================================= */
+/* GLOBAL FONT */
 
 .stApp h1,
 .stApp h2,
@@ -50,7 +45,6 @@ html, body, .stApp,
   font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif !important;
 }
 
-
 .stApp h1,
 .stApp h2,
 .stApp h3 {
@@ -59,9 +53,7 @@ html, body, .stApp,
 }
 
 
-/* =========================================================
-   CONTENT
-   ========================================================= */
+/* CONTENT */
 
 .block-container {
   padding-top: 2.2rem;
@@ -71,9 +63,7 @@ html, body, .stApp,
 }
 
 
-/* =========================================================
-   BUTTONS
-   ========================================================= */
+/* BUTTONS */
 
 .stButton > button,
 .stDownloadButton > button,
@@ -85,13 +75,8 @@ html, body, .stApp,
   font-weight: 500;
   letter-spacing: 0.05em;
   padding: 0.45rem 1.4rem;
-
-  transition:
-    transform 0.3s ease,
-    box-shadow 0.3s ease,
-    background-color 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
 }
-
 
 .stButton > button:hover,
 .stDownloadButton > button:hover {
@@ -100,29 +85,21 @@ html, body, .stApp,
 }
 
 
-/* =========================================================
-   PAGE NAVIGATION
-   ========================================================= */
+/* PAGE NAVIGATION */
 
 a[data-testid="stPageLink-NavLink"] {
   background: #1C1B1A;
   border-radius: 999px;
   justify-content: center;
   padding: 0.5rem 1rem;
-
-  transition:
-    transform 0.3s ease,
-    background-color 0.3s ease,
-    box-shadow 0.3s ease;
+  transition: transform 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease;
 }
-
 
 a[data-testid="stPageLink-NavLink"]:hover {
   background: #3A3735;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
-
 
 a[data-testid="stPageLink-NavLink"] p {
   color: #DCD8D2 !important;
@@ -131,24 +108,17 @@ a[data-testid="stPageLink-NavLink"] p {
 }
 
 
-/* =========================================================
-   CARDS
-   ========================================================= */
+/* CARDS */
 
 div[data-testid="stVerticalBlockBorderWrapper"] {
   border-color: #1C1B1A;
   border-radius: 26px;
   background: rgba(255, 255, 255, 0.55);
-
-  transition:
-    transform 0.3s ease,
-    box-shadow 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 
-/* =========================================================
-   INPUTS
-   ========================================================= */
+/* INPUTS */
 
 div[data-baseweb="select"] > div,
 .stTextInput input,
@@ -157,34 +127,24 @@ div[data-baseweb="select"] > div,
   background-color: #F4EDE3 !important;
   color: #1C1B1A !important;
   border-color: #E6D5B8 !important;
-
-  transition:
-    border-color 0.3s ease,
-    box-shadow 0.3s ease;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 
-/* =========================================================
-   FILE UPLOADER
-   ========================================================= */
+/* FILE UPLOADER */
 
 [data-testid="stFileUploader"] {
   max-width: 480px;
   margin: 0 auto;
 }
 
-
 [data-testid="stFileUploader"] section {
   background-color: #F4EDE3 !important;
   border-radius: 22px;
   border: 1.5px dashed #B08A3E !important;
   padding: 2rem 1.5rem !important;
-
-  transition:
-    transform 0.3s ease,
-    box-shadow 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
-
 
 [data-testid="stFileUploaderDropzone"] {
   display: flex !important;
@@ -194,18 +154,15 @@ div[data-baseweb="select"] > div,
   gap: 0.5rem;
 }
 
-
 [data-testid="stFileUploader"] section span,
 [data-testid="stFileUploader"] section small {
   color: #4A4642 !important;
 }
 
-
 [data-testid="stFileUploaderDropzone"] svg {
   width: 34px;
   height: 34px;
 }
-
 
 [data-testid="stFileUploaderDropzone"] button {
   background-color: #1C1B1A !important;
@@ -215,14 +172,11 @@ div[data-baseweb="select"] > div,
 }
 
 
-/* =========================================================
-   TEXT
-   ========================================================= */
+/* TEXT */
 
 .stRadio label p {
   color: #FBF6EE !important;
 }
-
 
 [data-testid="stMarkdownContainer"] p,
 [data-testid="stCaptionContainer"] {
@@ -230,9 +184,7 @@ div[data-baseweb="select"] > div,
 }
 
 
-/* =========================================================
-   EXPANDERS
-   ========================================================= */
+/* EXPANDERS */
 
 [data-testid="stExpander"] details {
   border-radius: 20px;
@@ -240,54 +192,21 @@ div[data-baseweb="select"] > div,
 }
 
 
-/* =========================================================
-   SMOOTH SCROLL
-   ========================================================= */
-
-html,
-body {
-  scroll-behavior: smooth;
-}
-
-
-/* =========================================================
-   FADE-IN ANIMATION
-   ========================================================= */
+/* FADE-IN ANIMATION */
 
 @keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
-
-/*
-   Apply only to main content blocks.
-   This gives the page a subtle entrance animation.
-*/
 
 [data-testid="stMetricContainer"] {
   animation: fadeInUp 0.6s ease-out;
 }
 
 
-/* =========================================================
-   ACCESSIBILITY
-   ========================================================= */
+/* ACCESSIBILITY */
 
 @media (prefers-reduced-motion: reduce) {
-
-  html,
-  body {
-    scroll-behavior: auto;
-  }
-
   *,
   *::before,
   *::after {
@@ -301,9 +220,7 @@ body {
 """
 
 
-# =========================================================
-# HERO BACKGROUND
-# =========================================================
+# HERO BACKGROUND PATTERN
 
 _HERO_BLOCKS = [
     ("1 / 1 / 3 / 3", "sq"),
@@ -327,12 +244,10 @@ _HERO_BLOCKS = [
     ("6 / 7 / 7 / 8", "dot"),
 ]
 
-
 _hero_blocks_html = "".join(
     f'<div class="{shape}" style="grid-area:{area}"></div>'
     for area, shape in _HERO_BLOCKS
 )
-
 
 _HERO_BG = f"""
 <style>
@@ -342,14 +257,11 @@ _HERO_BG = f"""
   inset: 0;
   z-index: 0;
   opacity: 0.29;
-
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(6, 1fr);
-
   gap: 10px;
   padding: 30px;
-
   pointer-events: none;
 }}
 
@@ -357,17 +269,9 @@ _HERO_BG = f"""
   background: #1C1B1A;
 }}
 
-.bg-hero-wrap .sq {{
-  border-radius: 24%;
-}}
-
-.bg-hero-wrap .pill {{
-  border-radius: 999px;
-}}
-
-.bg-hero-wrap .dot {{
-  border-radius: 50%;
-}}
+.bg-hero-wrap .sq {{ border-radius: 24%; }}
+.bg-hero-wrap .pill {{ border-radius: 999px; }}
+.bg-hero-wrap .dot {{ border-radius: 50%; }}
 
 </style>
 
@@ -377,127 +281,94 @@ _HERO_BG = f"""
 """
 
 
-# =========================================================
 # SMOOTH MOUSE-WHEEL SCROLL
-# =========================================================
+# Runs inside a hidden component frame and controls the parent page's
+# scrolling area (Streamlit scrolls an inner container, not the window).
 
 _SMOOTH_SCROLL_JS = """
 <script>
-
 (function () {
+  var parentWin = window.parent;
+  var doc = parentWin.document;
 
-    let currentScroll = window.scrollY;
-    let targetScroll = window.scrollY;
-    let animationFrame = null;
+  // Only install once, even though Streamlit reruns the script often.
+  if (parentWin.__adoreSmoothScroll) { return; }
+  parentWin.__adoreSmoothScroll = true;
 
-    const ease = 0.10;
+  var EASE = 0.12;
+  var current = 0;
+  var target = 0;
+  var frame = null;
+  var scroller = null;
 
-    function smoothScroll() {
+  function getScroller() {
+    return doc.querySelector('[data-testid="stMain"]') ||
+           doc.querySelector('section.main') ||
+           doc.scrollingElement;
+  }
 
-        currentScroll += (targetScroll - currentScroll) * ease;
-
-        if (Math.abs(targetScroll - currentScroll) < 0.5) {
-            currentScroll = targetScroll;
+  // If the mouse is over a scrollable inner box (dropdown list, table),
+  // let the browser handle it normally.
+  function insideInnerScrollable(el, root) {
+    while (el && el !== root && el !== doc.body) {
+      if (el.nodeType === 1) {
+        var style = parentWin.getComputedStyle(el);
+        var oy = style.overflowY;
+        if ((oy === 'auto' || oy === 'scroll') &&
+            el.scrollHeight > el.clientHeight + 1) {
+          return true;
         }
+      }
+      el = el.parentNode;
+    }
+    return false;
+  }
 
-        window.scrollTo(0, currentScroll);
+  function step() {
+    current += (target - current) * EASE;
+    if (Math.abs(target - current) < 0.5) {
+      current = target;
+    }
+    scroller.scrollTop = current;
+    if (current !== target) {
+      frame = parentWin.requestAnimationFrame(step);
+    } else {
+      frame = null;
+    }
+  }
 
-        if (Math.abs(targetScroll - currentScroll) > 0.5) {
-            animationFrame = requestAnimationFrame(smoothScroll);
-        } else {
-            animationFrame = null;
-        }
+  doc.addEventListener('wheel', function (e) {
+    if (e.ctrlKey) { return; }
+
+    scroller = getScroller();
+    if (!scroller || !scroller.contains(e.target)) { return; }
+    if (insideInnerScrollable(e.target, scroller)) { return; }
+
+    e.preventDefault();
+
+    if (!frame) {
+      current = scroller.scrollTop;
+      target = current;
     }
 
+    var delta = e.deltaY;
+    if (e.deltaMode === 1) { delta *= 33; }
 
-    window.addEventListener(
-        "wheel",
-        function (event) {
+    var maxScroll = scroller.scrollHeight - scroller.clientHeight;
+    target = Math.max(0, Math.min(target + delta, maxScroll));
 
-            /*
-             * Don't interfere with zooming.
-             */
-            if (event.ctrlKey) {
-                return;
-            }
-
-
-            /*
-             * Prevent the browser's default
-             * instant mouse-wheel movement.
-             */
-            event.preventDefault();
-
-
-            /*
-             * Add wheel movement to our target.
-             */
-            targetScroll += event.deltaY;
-
-
-            /*
-             * Keep target inside the page.
-             */
-            const maxScroll =
-                document.documentElement.scrollHeight -
-                window.innerHeight;
-
-            targetScroll = Math.max(
-                0,
-                Math.min(targetScroll, maxScroll)
-            );
-
-
-            /*
-             * Start smooth animation.
-             */
-            if (!animationFrame) {
-                animationFrame =
-                    requestAnimationFrame(smoothScroll);
-            }
-
-        },
-        {
-            passive: false
-        }
-    );
-
-
-    /*
-     * Keep values synchronized if Streamlit
-     * changes the page height.
-     */
-    window.addEventListener(
-        "scroll",
-        function () {
-
-            if (!animationFrame) {
-                currentScroll = window.scrollY;
-                targetScroll = window.scrollY;
-            }
-
-        },
-        {
-            passive: true
-        }
-    );
+    if (!frame) {
+      frame = parentWin.requestAnimationFrame(step);
+    }
+  }, { passive: false });
 
 })();
-
 </script>
 """
 
 
-# =========================================================
 # APPLY THEME
-# =========================================================
 
 def apply_theme():
-
-    st.markdown(
-        _CSS +
-        _HERO_BG +
-        _SMOOTH_SCROLL_JS,
-        unsafe_allow_html=True
-    )
-```
+    st.markdown(_CSS + _HERO_BG, unsafe_allow_html=True)
+    components.html(_SMOOTH_SCROLL_JS, height=0)
