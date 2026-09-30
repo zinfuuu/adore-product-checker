@@ -191,7 +191,32 @@ div[data-baseweb="select"] > div,
   border-color: #1C1B1A;
 }
 
+/* SIDEBAR */
 
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebarContent"] {
+  background-color: #4A0E1A !important;
+}
+
+[data-testid="stSidebar"] a,
+[data-testid="stSidebar"] a span,
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] li {
+  color: #FBF6EE !important;
+}
+
+[data-testid="stSidebarNavLink"][aria-current="page"],
+[data-testid="stSidebar"] a[aria-current="page"] {
+  background-color: rgba(251, 246, 238, 0.18) !important;
+  border-radius: 12px;
+}
+
+[data-testid="stSidebarNavLink"]:hover,
+[data-testid="stSidebar"] a:hover {
+  background-color: rgba(251, 246, 238, 0.10) !important;
+  border-radius: 12px;
+}
 /* FADE-IN ANIMATION */
 
 @keyframes fadeInUp {
