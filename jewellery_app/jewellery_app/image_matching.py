@@ -1,136 +1,160 @@
 """
 image_matching.py
-------------------
-This is the "eye" of the app. It uses DINOv2, a free, open-source AI
-vision model from Meta, to turn any jewellery photo into a "fingerprint":
-a list of numbers that represents what the image visually looks like in
-fine detail.
-
-WHY DINOV2 INSTEAD OF CLIP
----------------------------
-CLIP was trained to match images to *text captions* - it's good at
-general semantic similarity ("this is a gold necklace"), but that means
-two different gold necklaces with a similar general look can score
-deceptively close together.
-
-DINOv2 was trained differently: purely on images, with no text at all,
-specifically to tell apart fine visual details between similar-looking
-objects. This makes it much better suited to "is this the exact same
-product" matching rather than "does this look like the same category of
-thing" - which is exactly what SKU-level product matching needs.
-
-We measure "closeness" the same way as before: cosine similarity (a
-score from -1 to 1), converted into a 0-100% display value.
-
-NOTE: The first time this runs, it needs internet access to download the
-model (a few hundred MB, one-time only). After that it works offline.
+-----------------
+Image embedding and matching using DINOv2.
+Fetches product images from Shopify URLs (not Storage).
 """
 
+import json
 import numpy as np
-import torch
+import requests
 from PIL import Image
+from io import BytesIO
+import torch
+from transformers import AutoImageProcessor, AutoModel
 
-_model = None
+import database
+
+
+# Load DINOv2 model once at startup
 _processor = None
+_model = None
 
-# Using the "small" DINOv2 variant rather than base/large - noticeably
-# lighter on memory and CPU, which matters a lot on Streamlit Cloud's free
-# tier (we've already hit crashes/throttling with heavier models here).
-DINOV2_MODEL_NAME = "facebook/dinov2-small"
-
-
-def get_model():
-    """Load the DINOv2 model into memory (only happens once per app run)."""
-    global _model, _processor
+def _load_model():
+    global _processor, _model
     if _model is None:
-        from transformers import AutoImageProcessor, AutoModel
-        _processor = AutoImageProcessor.from_pretrained(DINOV2_MODEL_NAME)
-        _model = AutoModel.from_pretrained(DINOV2_MODEL_NAME)
-        _model.eval()
-    return _model, _processor
+        print("Loading DINOv2 model...")
+        _processor = AutoImageProcessor.from_pretrained('facebook/dinov2-small')
+        _model = AutoModel.from_pretrained('facebook/dinov2-small')
+        print("Model loaded.")
+    return _processor, _model
 
 
-def get_embedding(image_input):
+def compute_embedding(image):
     """
-    Turn an image into a fingerprint (a list of numbers).
-    'image_input' can be a file path (string) or an already-open PIL Image.
-    Returns a plain Python list (so it can be saved as JSON in the database).
+    Compute DINOv2 embedding for a PIL Image.
+    Returns a list (JSON-serializable).
     """
-    model, processor = get_model()
-    if isinstance(image_input, Image.Image):
-        img = image_input.convert("RGB")
-    else:
-        img = Image.open(image_input).convert("RGB")
-
-    inputs = processor(images=img, return_tensors="pt")
+    processor, model = _load_model()
+    
+    # Ensure RGB
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    # Resize to DINOv2 input size
+    image = image.resize((224, 224))
+    
+    # Process
+    inputs = processor(images=image, return_tensors="pt")
+    
     with torch.no_grad():
         outputs = model(**inputs)
-
-    # The CLS token (first position) summarises the whole image - this is
-    # the standard embedding to use for DINOv2 image retrieval/matching.
-    embedding = outputs.last_hidden_state[:, 0, :][0]
-    return embedding.numpy().tolist()
+        embedding = outputs.last_hidden_state.mean(dim=1)[0].numpy()
+    
+    return embedding.tolist()
 
 
-def cosine_similarity(embedding_a, embedding_b):
-    """
-    Compare two fingerprints. Returns a score from -1 to 1
-    (in practice, for real photos, usually between 0 and 1).
-    """
-    a = np.array(embedding_a, dtype=np.float32)
-    b = np.array(embedding_b, dtype=np.float32)
-    denom = (np.linalg.norm(a) * np.linalg.norm(b))
-    if denom == 0:
+def normalize_embedding(emb):
+    """Normalize embedding to unit length."""
+    if isinstance(emb, str):
+        emb = json.loads(emb)
+    arr = np.array(emb)
+    norm = np.linalg.norm(arr)
+    if norm == 0:
+        return arr.tolist()
+    return (arr / norm).tolist()
+
+
+def cosine_similarity(emb1, emb2):
+    """Compute cosine similarity between two embeddings."""
+    if isinstance(emb1, str):
+        emb1 = json.loads(emb1)
+    if isinstance(emb2, str):
+        emb2 = json.loads(emb2)
+    
+    arr1 = np.array(emb1)
+    arr2 = np.array(emb2)
+    
+    norm1 = np.linalg.norm(arr1)
+    norm2 = np.linalg.norm(arr2)
+    
+    if norm1 == 0 or norm2 == 0:
         return 0.0
-    return float(np.dot(a, b) / denom)
+    
+    return float(np.dot(arr1, arr2) / (norm1 * norm2))
 
 
-def similarity_to_percent(score):
+def find_matches(user_image, category_filter=None, top_k=20):
     """
-    Convert a raw cosine similarity score into a 0-100% display value.
-
-    NOTE: DINOv2's similarity scores are distributed differently than
-    CLIP's were - this scaling formula is unchanged for now (per the
-    "keep this phase simple" plan), but once you've tested a few real
-    searches, the exact percentages you see may need retuning. That's a
-    separate follow-up, not a sign something's broken.
+    Find top-k matching products.
+    
+    Returns list of dicts:
+      {
+        "id": product_id,
+        "code": product_code,
+        "name": product_name,
+        "image_url": shopify_url,  <-- Shopify URL, not Storage
+        "confidence": 0–100,
+        "website_url": link_to_shopify,
+      }
     """
-    stretched = (score - 0.5) / 0.5
-    percent = max(0.0, min(1.0, stretched)) * 100
-    return round(percent, 1)
-
-
-def confidence_label(percent):
-    """Map a percentage to a human-readable confidence label."""
-    if percent >= 93:
-        return "Very likely match", "success"
-    elif percent >= 82:
-        return "Possible match - please confirm visually", "warning"
-    else:
-        return "No reliable match", "error"
-
-
-def find_matches(query_embedding, catalogue_products, top_n=5):
-    """
-    Compare one uploaded image's fingerprint against every catalogue product
-    that has a stored fingerprint, and return the best matches sorted by
-    similarity (best first).
-    """
-    import json
-    results = []
-    for product in catalogue_products:
-        if not product.get("embedding"):
+    # Compute embedding of user's image
+    user_embedding = compute_embedding(user_image)
+    user_embedding_norm = normalize_embedding(user_embedding)
+    
+    # Fetch all products
+    all_products = database.get_all_products()
+    
+    if category_filter and category_filter != "All categories":
+        all_products = [p for p in all_products if p.get("category") == category_filter]
+    
+    # Score each product
+    scored = []
+    for product in all_products:
+        prod_emb = product.get("embedding")
+        
+        if not prod_emb:
             continue
-        raw_embedding = product["embedding"]
-        product_embedding = json.loads(raw_embedding) if isinstance(raw_embedding, str) else raw_embedding
-        score = cosine_similarity(query_embedding, product_embedding)
-        percent = similarity_to_percent(score)
-        label, level = confidence_label(percent)
-        results.append({
-            **product,
-            "similarity_percent": percent,
-            "confidence_label": label,
-            "confidence_level": level,
+        
+        prod_emb_norm = normalize_embedding(prod_emb)
+        score = cosine_similarity(user_embedding_norm, prod_emb_norm)
+        
+        scored.append({
+            "id": product["id"],
+            "code": product["product_code"],
+            "name": product["product_name"],
+            "image_url": product.get("image_url", ""),  # Shopify URL
+            "similarity": score,
+            "website_url": product.get("website_url", ""),
         })
-    results.sort(key=lambda r: r["similarity_percent"], reverse=True)
-    return results[:top_n]
+    
+    # Sort by similarity
+    scored.sort(key=lambda x: x["similarity"], reverse=True)
+    
+    # Convert to confidence (0–100 scale)
+    matches = []
+    for item in scored[:top_k]:
+        conf = confidence_label(item["similarity"])
+        matches.append({
+            "id": item["id"],
+            "code": item["code"],
+            "name": item["name"],
+            "image_url": item["image_url"],
+            "confidence": conf["label"],
+            "confidence_value": conf["value"],
+            "website_url": item["website_url"],
+        })
+    
+    return matches
+
+
+def confidence_label(similarity_score):
+    """
+    Convert cosine similarity (0–1) to confidence label and percentage.
+    """
+    if similarity_score >= 0.82:
+        return {"label": "✅ High confidence", "value": int(similarity_score * 100)}
+    elif similarity_score >= 0.70:
+        return {"label": "⚠️ Medium confidence", "value": int(similarity_score * 100)}
+    else:
+        return {"label": "❌ No reliable match", "value": int(similarity_score * 100)}
